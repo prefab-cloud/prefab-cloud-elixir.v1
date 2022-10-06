@@ -7,146 +7,253 @@ option java_outer_classname = "Prefab";
 
 
 service RateLimitService {
-    rpc LimitCheck (LimitRequest) returns (LimitResponse) {
-    };
-    rpc UpsertLimitDefinition (LimitDefinition) returns (BasicResponse) {
-    };
+  rpc LimitCheck (LimitRequest) returns (LimitResponse) {
+  };
 }
 
 service ConfigService {
-    rpc GetConfig (ConfigServicePointer) returns (stream ConfigDeltas) {
-    };
-    rpc Upsert (UpsertRequest) returns (ConfigServicePointer) {
-    };
+  rpc GetConfig (ConfigServicePointer) returns (stream Configs) {
+  };
+  rpc GetAllConfig (ConfigServicePointer) returns (Configs) {
+  };
+  rpc Upsert (Config) returns (CreationResponse) {
+  };
+}
+
+service IdService {
+  rpc GetBlock (IdBlockRequest) returns (IdBlock) {
+  };
 }
 
 message ConfigServicePointer {
-    int64 account_id = 1;
-    int64 start_at_id = 2;
-}
-message ConfigDelta {
-    int64 id = 2;
-    string key = 3;
-    ConfigValue value = 4;
+  int64 project_id = 1;
+  int64 start_at_id = 2;
+  int64 project_env_id = 3;
 }
 
 message ConfigValue {
-    oneof type {
-        int64 int = 1;
-        string string = 2;
-        bytes bytes = 3;
-        double double = 4;
-        bool bool = 5;
-        FeatureFlag feature_flag = 6;
-    }
+  oneof type {
+    int64 int = 1;
+    string string = 2;
+    bytes bytes = 3;
+    double double = 4;
+    bool bool = 5;
+    FeatureFlag feature_flag = 6;
+    LimitDefinition limit_definition = 7;
+    Segment segment = 8;
+    LogLevel log_level = 9;
+  }
 }
 
-message ConfigDeltas {
-    repeated ConfigDelta deltas = 1;
+message Configs {
+  repeated Config configs = 1;
+  ConfigServicePointer config_service_pointer = 2;
 }
 
-message UpsertRequest {
-    int64 account_id = 1;
-    ConfigDelta config_delta = 2;
-    string previous_key = 3;
+message Config {
+  int64 id = 1;
+  int64 project_id = 2;
+  string key = 3;
+  string changed_by = 4;
+  repeated ConfigRow rows = 5;
+  repeated FeatureFlagVariant variants = 6;
 }
+
+message ConfigRow {
+  int64 project_env_id = 1;
+  string namespace = 2;
+  ConfigValue value = 3;
+}
+
+enum LogLevel {
+  NOT_SET_LOG_LEVEL = 0;
+  TRACE = 1;
+  DEBUG = 2;
+  INFO = 3;
+  // NOTICE = 4;
+  WARN = 5;
+  ERROR = 6;
+  // CRITICAL = 7;
+  // ALERT = 8;
+  FATAL = 9;
+}
+
 
 message LimitResponse {
-    enum LimitPolicyNames {
-        NOT_SET = 0;
-        SECONDLY_ROLLING = 1;
-        MINUTELY_ROLLING = 3;
-        HOURLY_ROLLING = 5;
-        DAILY_ROLLING = 7;
-        MONTHLY_ROLLING = 8;
-        INFINITE = 9;
-        YEARLY_ROLLING = 10;
-    }
+  enum LimitPolicyNames {
+    NOT_SET = 0;
+    SECONDLY_ROLLING = 1;
+    MINUTELY_ROLLING = 3;
+    HOURLY_ROLLING = 5;
+    DAILY_ROLLING = 7;
+    MONTHLY_ROLLING = 8;
+    INFINITE = 9;
+    YEARLY_ROLLING = 10;
+  }
 
-    bool passed = 1;
-    int64 expires_at = 2; // for returnable: rtn this value
-    string enforced_group = 3; // events:pageview:homepage:123123
-    int64 current_bucket = 4;
-    string policy_group = 5; // events:pageview
-    LimitPolicyNames policy_name = 6;
-    int32 policy_limit = 7;
-    int64 amount = 8;
-    int64 limit_reset_at = 9;
-    LimitDefinition.SafetyLevel safety_level = 10;
+  bool passed = 1;
+  int64 expires_at = 2; // for returnable: rtn this value
+  string enforced_group = 3; // events:pageview:homepage:123123
+  int64 current_bucket = 4;
+  string policy_group = 5; // events:pageview
+  LimitPolicyNames policy_name = 6;
+  int32 policy_limit = 7;
+  int64 amount = 8;
+  int64 limit_reset_at = 9;
+  LimitDefinition.SafetyLevel safety_level = 10;
 
 }
 
 message LimitRequest {
-    int64 account_id = 1;
-    int32 acquire_amount = 2;
-    repeated string groups = 3;
+  int64 account_id = 1;
+  int32 acquire_amount = 2;
+  repeated string groups = 3;
 
-    enum LimitCombiner {
-        NOT_SET = 0;
-        MINIMUM = 1;
-        MAXIMUM = 2;
-    }
+  enum LimitCombiner {
+    NOT_SET = 0;
+    MINIMUM = 1;
+    MAXIMUM = 2;
+  }
 
-    LimitCombiner limit_combiner = 4;
-    bool allow_partial_response = 5;
+  LimitCombiner limit_combiner = 4;
+  bool allow_partial_response = 5;
+  LimitDefinition.SafetyLevel safety_level = 6; // [default = L4_BEST_EFFORT];
+}
+
+message FeatureFlagVariant {
+
+  optional int64 int = 1;
+  optional string string = 2;
+  optional double double = 3;
+  optional bool bool = 4;
+
+  string name = 5;
+  string description = 6;
+}
+
+message Criteria {
+  enum CriteriaOperator {
+    NOT_SET = 0; // proto null
+    LOOKUP_KEY_IN = 1;
+    LOOKUP_KEY_NOT_IN = 2;
+    IN_SEG = 3;
+    NOT_IN_SEG = 4;
+    ALWAYS_TRUE = 5;
+    PROP_IS_ONE_OF = 6;
+    PROP_IS_NOT_ONE_OF = 7;
+    PROP_ENDS_WITH_ONE_OF = 8;
+    PROP_DOES_NOT_END_WITH_ONE_OF = 9;
+  }
+  string property = 1;
+  CriteriaOperator operator = 2;
+  repeated string values = 3;  // ok to be string here?
+}
+
+message Rule {
+  Criteria criteria = 1;
+  repeated VariantWeight variant_weights = 2;
+}
+
+message Segment {
+  repeated Criteria criterion = 1;
+}
+
+message VariantWeight {
+  int32 weight = 1;  // out of 1000
+  int32 variant_idx = 2;
 }
 
 message FeatureFlag {
-    double pct = 3;
-    repeated string whitelisted = 4;
+  bool active = 1;
+  int32 inactive_variant_idx = 2;
+  repeated Rule rules = 5;
+}
+
+
+service ClientService {
+  rpc GetAll (Identity) returns (ConfigEvaluations) {
+  };
+}
+
+message Identity {
+  optional string lookup = 1;
+  map<string, string> attributes = 2;
+}
+
+message ClientConfigValue {
+  optional int64 int = 1;
+  optional string string = 2;
+  optional double double = 3;
+  optional bool bool = 4;
+}
+message ConfigEvaluations {
+  map<string, ClientConfigValue> values = 1;
 }
 
 message LimitDefinition {
-    enum SafetyLevel {
-        NOT_SET = 0;
-        L4_BEST_EFFORT = 4;
-        L5_BOMBPROOF = 5;
-    }
+  enum SafetyLevel {
+    NOT_SET = 0;
+    L4_BEST_EFFORT = 4;
+    L5_BOMBPROOF = 5;
+  }
 
-    string group = 1;
-    LimitResponse.LimitPolicyNames policy_name = 2;
-    int32 limit = 3;
-    int32 burst = 4;
-    int64 account_id = 5;
-    int64 last_modified = 6;
-    bool returnable = 7;
-    SafetyLevel safety_level = 8; // [default = L4_BEST_EFFORT];
+  LimitResponse.LimitPolicyNames policy_name = 2;
+  int32 limit = 3;
+  int32 burst = 4;
+  int64 account_id = 5;
+  int64 last_modified = 6;
+  bool returnable = 7;
+  SafetyLevel safety_level = 8; // [default = L4_BEST_EFFORT]; // Overridable by request
 }
 
 message LimitDefinitions {
-    repeated LimitDefinition definitions = 1;
+  repeated LimitDefinition definitions = 1;
 }
 
 enum OnFailure {
-    NOT_SET = 0;
-    LOG_AND_PASS = 1;
-    LOG_AND_FAIL = 2;
-    THROW = 3;
-}
-
-message FeatureFlags {
-    repeated FeatureFlag flags = 1;
-    int64 cache_expiry = 2;
+  NOT_SET = 0;
+  LOG_AND_PASS = 1;
+  LOG_AND_FAIL = 2;
+  THROW = 3;
 }
 
 message BufferedRequest {
-    int64 account_id = 1;
-    string method = 2;
-    string uri = 3;
-    string body = 4;
-    repeated string limit_groups = 5;
-    string content_type = 6;
-    bool fifo = 7;
+  int64 account_id = 1;
+  string method = 2;
+  string uri = 3;
+  string body = 4;
+  repeated string limit_groups = 5;
+  string content_type = 6;
+  bool fifo = 7;
 }
 message BatchRequest {
-    int64 account_id = 1;
-    string method = 2;
-    string uri = 3;
-    string body = 4;
-    repeated string limit_groups = 5;
-    string batch_template = 6;
-    string batch_separator = 7;
+  int64 account_id = 1;
+  string method = 2;
+  string uri = 3;
+  string body = 4;
+  repeated string limit_groups = 5;
+  string batch_template = 6;
+  string batch_separator = 7;
 }
 message BasicResponse {
-    string message = 1;
+  string message = 1;
+}
+message CreationResponse {
+  string message = 1;
+  int64 new_id = 2;
+}
+
+message IdBlock {
+  int64 project_id = 1;
+  int64 project_env_id = 2;
+  string sequence_name = 3;
+  int64 start = 4;
+  int64 end = 5;
+}
+
+message IdBlockRequest {
+  int64 project_id = 1;
+  int64 project_env_id = 2;
+  string sequence_name = 3;
+  int64 size = 4;
 }
